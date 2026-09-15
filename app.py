@@ -181,4 +181,3 @@ if uploaded_file is not None:
         st.write(
             f"**Generated Caption:** {caption}"
         )
-```
