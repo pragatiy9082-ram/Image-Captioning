@@ -125,7 +125,7 @@ def generate_caption(image):
             verbose=0
         )[0]
 
-        predicted_id = np.argmax(prediction)
+        predicted_id = np.argmax(prediction[1:]) + 1
 
         predicted_word = None
 
