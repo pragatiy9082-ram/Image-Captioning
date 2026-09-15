@@ -1,96 +1,168 @@
+```python
 import streamlit as st
+import tensorflow as tf
 import numpy as np
 import pickle
 import os
-import urllib.request
+import requests
 
 from PIL import Image
-from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
-from tensorflow.keras.preprocessing.image import img_to_array
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+
+# ============================================================
+# PAGE SETTINGS
+# ============================================================
 
 st.set_page_config(
     page_title="Image Captioning",
-    page_icon="🖼️"
+    page_icon="🖼️",
+    layout="centered"
 )
 
 st.title("🖼️ Image Captioning")
 st.write("Upload an image and generate a caption using VGG16 + LSTM.")
 
-MODEL_URL = "https://github.com/pragatiy9082-ram/Image-Captioning/releases/download/v1.0/image_captioning_model.1.h5"
-MODEL_PATH = "image_captioning_model.1.h5"
 
-if not os.path.exists(MODEL_PATH):
-    with st.spinner("Downloading trained model..."):
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+# ============================================================
+# FILE SETTINGS
+# ============================================================
+
+MODEL_FILE = "image_captioning_model.1.h5"
+TOKENIZER_FILE = "tokenizer.pkl"
+
+MODEL_URL = (
+    "https://github.com/pragatiy9082-ram/Image-Captioning/"
+    "releases/download/v1.0/image_captioning_model.1.h5"
+)
+
+
+# ============================================================
+# DOWNLOAD MODEL
+# ============================================================
+
+if not os.path.exists(MODEL_FILE):
+
+    with st.spinner("Downloading model..."):
+
+        response = requests.get(
+            MODEL_URL,
+            timeout=300
+        )
+
+        response.raise_for_status()
+
+        with open(MODEL_FILE, "wb") as f:
+            f.write(response.content)
+
+
+# ============================================================
+# LOAD MODEL
+# ============================================================
 
 @st.cache_resource
 def load_resources():
-    model = load_model(MODEL_PATH)
 
-    with open("tokenizer.pkl", "rb") as f:
+    model = tf.keras.models.load_model(
+        MODEL_FILE,
+        compile=False
+    )
+
+    with open(TOKENIZER_FILE, "rb") as f:
         tokenizer = pickle.load(f)
 
-    vgg_model = VGG16(weights="imagenet", include_top=False)
+    vgg = VGG16(
+        weights="imagenet",
+        include_top=False
+    )
 
-    return model, tokenizer, vgg_model
+    vgg.trainable = False
 
-model, tokenizer, vgg_model = load_resources()
-
-max_length = 10
+    return model, tokenizer, vgg
 
 
-def generate_caption(photo):
+model, tokenizer, vgg = load_resources()
 
-    # Training code uses "start", not "startseq"
-    in_text = "start"
 
-    for i in range(max_length):
+# ============================================================
+# CAPTION GENERATION
+# ============================================================
 
-        sequence = tokenizer.texts_to_sequences([in_text])[0]
+def generate_caption(image):
 
-        sequence = np.pad(
-            sequence,
-            (0, max_length - len(sequence)),
-            mode="constant"
+    image = image.convert("RGB")
+    image = image.resize((224, 224))
+
+    image_array = np.array(image)
+
+    image_array = preprocess_input(
+        np.expand_dims(image_array, axis=0)
+    )
+
+    feature = vgg.predict(
+        image_array,
+        verbose=0
+    ).reshape(1, -1)
+
+    text = "start"
+    max_length = 10
+
+    for _ in range(max_length):
+
+        sequence = tokenizer.texts_to_sequences(
+            [text]
+        )[0]
+
+        sequence = pad_sequences(
+            [sequence],
+            maxlen=max_length,
+            padding="pre"
         )
 
-        yhat = model.predict(
-            [photo, sequence.reshape(1, -1)],
+        prediction = model.predict(
+            [feature, sequence],
             verbose=0
-        )
+        )[0]
 
-        yhat = np.argmax(yhat[0])
+        predicted_id = np.argmax(prediction)
 
-        word = None
+        predicted_word = None
 
-        for w, index in tokenizer.word_index.items():
-            if index == yhat:
-                word = w
+        for word, index in tokenizer.word_index.items():
+
+            if index == predicted_id:
+                predicted_word = word
                 break
 
-        if word is None:
+        if predicted_word is None:
             break
 
-        # Training code uses "end"
-        if word == "end":
+        if predicted_word == "end":
             break
 
-        in_text += " " + word
+        text += " " + predicted_word
 
-    caption = in_text.replace("start", "").strip()
+    return text.replace("start", "").strip()
 
-    return caption
 
+# ============================================================
+# IMAGE UPLOAD
+# ============================================================
 
 uploaded_file = st.file_uploader(
     "Upload an image",
     type=["jpg", "jpeg", "png"]
 )
 
+
+# ============================================================
+# DISPLAY IMAGE + GENERATE CAPTION
+# ============================================================
+
 if uploaded_file is not None:
 
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(uploaded_file)
 
     st.image(
         image,
@@ -102,28 +174,11 @@ if uploaded_file is not None:
 
         with st.spinner("Generating caption..."):
 
-            image_resized = image.resize((224, 224))
-
-            image_array = img_to_array(image_resized)
-
-            image_array = np.expand_dims(image_array, axis=0)
-
-            image_array = preprocess_input(image_array)
-
-            features = vgg_model.predict(
-                image_array,
-                verbose=0
-            )
-
-            features = features.reshape(
-                features.shape[0],
-                -1
-            )
-
-            caption = generate_caption(features)
+            caption = generate_caption(image)
 
         st.success("Caption Generated!")
 
-        st.subheader("Generated Caption")
-
-        st.write(caption)
+        st.write(
+            f"**Generated Caption:** {caption}"
+        )
+```
