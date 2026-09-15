@@ -9,10 +9,6 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
 
-
-# -----------------------------
-# Page settings
-# -----------------------------
 st.set_page_config(
     page_title="Image Captioning",
     page_icon="🖼️"
@@ -21,10 +17,6 @@ st.set_page_config(
 st.title("🖼️ Image Captioning")
 st.write("Upload an image and generate a caption using VGG16 + LSTM.")
 
-
-# -----------------------------
-# Model download
-# -----------------------------
 MODEL_URL = "https://github.com/pragatiy9082-ram/Image-Captioning/releases/download/v1.0/image_captioning_model.1.h5"
 MODEL_PATH = "image_captioning_model.1.h5"
 
@@ -32,37 +24,26 @@ if not os.path.exists(MODEL_PATH):
     with st.spinner("Downloading trained model..."):
         urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
 
-
-# -----------------------------
-# Load model and tokenizer
-# -----------------------------
 @st.cache_resource
 def load_resources():
-
     model = load_model(MODEL_PATH)
 
     with open("tokenizer.pkl", "rb") as f:
         tokenizer = pickle.load(f)
 
-    vgg_model = VGG16(
-        weights="imagenet",
-        include_top=False
-    )
+    vgg_model = VGG16(weights="imagenet", include_top=False)
 
     return model, tokenizer, vgg_model
-
 
 model, tokenizer, vgg_model = load_resources()
 
 max_length = 10
 
 
-# -----------------------------
-# Generate caption
-# -----------------------------
 def generate_caption(photo):
 
-    in_text = "startseq"
+    # Training code uses "start", not "startseq"
+    in_text = "start"
 
     for i in range(max_length):
 
@@ -91,24 +72,21 @@ def generate_caption(photo):
         if word is None:
             break
 
-        if word == "endseq":
+        # Training code uses "end"
+        if word == "end":
             break
 
         in_text += " " + word
 
-    caption = in_text.replace("startseq", "").strip()
+    caption = in_text.replace("start", "").strip()
 
     return caption
 
 
-# -----------------------------
-# Image upload
-# -----------------------------
 uploaded_file = st.file_uploader(
     "Upload an image",
     type=["jpg", "jpeg", "png"]
 )
-
 
 if uploaded_file is not None:
 
@@ -128,10 +106,7 @@ if uploaded_file is not None:
 
             image_array = img_to_array(image_resized)
 
-            image_array = np.expand_dims(
-                image_array,
-                axis=0
-            )
+            image_array = np.expand_dims(image_array, axis=0)
 
             image_array = preprocess_input(image_array)
 
@@ -148,5 +123,7 @@ if uploaded_file is not None:
             caption = generate_caption(features)
 
         st.success("Caption Generated!")
+
         st.subheader("Generated Caption")
+
         st.write(caption)
